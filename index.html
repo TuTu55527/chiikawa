@@ -280,22 +280,26 @@
     }
 
     // 📤 匯出 CSV
-    function exportCSV() {
-      if (lastResults.length === 0) {
-        alert("沒有資料可匯出！");
-        return;
-      }
-      let csv = "姓名,品項,描述,金額(日幣),金額(台幣),類型,匯款,時間\n";
-      lastResults.forEach(o => {
-        let yen = (o.amount / 0.25).toFixed(0);
-        csv += `${o.name},${o.item},${o.desc || ""},${yen},${o.amount},${o.type},${o.paid},${o.time}\n`;
-      });
-      let blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-      let link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = "orders.csv";
-      link.click();
-    }
+function exportCSV() {
+  if (lastResults.length === 0) {
+    alert("沒有資料可匯出！");
+    return;
+  }
+  let csv = "姓名,品項,描述,金額(日幣),金額(台幣),類型,匯款,時間\n";
+  lastResults.forEach(o => {
+    let yen = (o.amount / 0.25).toFixed(0);
+    csv += `${o.name},${o.item},${o.desc || ""},${yen},${o.amount},${o.type},${o.paid},${o.time}\n`;
+  });
+
+  // 加 BOM，避免 Excel 亂碼
+  let bom = "\uFEFF";
+  let blob = new Blob([bom + csv], { type: "text/csv;charset=utf-8;" });
+  let link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "orders.csv";
+  link.click();
+}
+
   </script>
 </body>
 </html>
