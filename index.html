@@ -3,9 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <title>訂單管理</title>
-  <!-- Firebase SDK (compat 版本，支援 initializeApp) -->
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <style>
+    body { font-family: "Microsoft JhengHei", sans-serif; background: #f8f9fa; padding: 20px; }
+    h2 { color: #007bff; border-bottom: 2px solid #007bff; padding-bottom: 5px; }
+    form { background: #fff; padding: 15px; margin: 15px 0; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    label { display: inline-block; width: 120px; font-weight: bold; margin-bottom: 5px; }
+    input, select { padding: 6px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; width: calc(100% - 130px); }
+    input[type="submit"], button { width: auto; background: #007bff; color: white; border: none; cursor: pointer; padding: 8px 16px; border-radius: 4px; margin-top: 10px; }
+    input[type="submit"]:hover, button:hover { background: #0056b3; }
+    #result { background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-top: 15px; }
+    .order-item { border-bottom: 1px solid #eee; padding: 5px 0; }
+    small { color: #555; }
+  </style>
 </head>
 <body>
   <h2>🔒 輸入密碼登入</h2>
@@ -16,35 +27,49 @@
     <h2>新增訂單</h2>
     <form id="orderForm">
       <label>姓名：</label>
-      <input type="text" name="name" required><br><br>
+      <select id="orderNameSelect" name="name" required>
+        <option value="">-- 請選擇姓名 --</option>
+        <option value="__new__">➕ 新增姓名</option>
+      </select>
+      <input type="text" id="newNameInput" placeholder="輸入新姓名" style="display:none;">
+      <br>
 
       <label>品項：</label>
-      <input type="text" name="item" required><br><br>
+      <select id="orderItemSelect" name="item" required>
+        <option value="">-- 請選擇品項 --</option>
+        <option value="__new__">➕ 新增品項</option>
+      </select>
+      <input type="text" id="newItemInput" placeholder="輸入新品項" style="display:none;">
+      <br>
 
-      <label>總金額：</label>
-      <input type="number" name="amount" required><br><br>
+      <label>金額（日幣）：</label>
+      <input type="number" id="yenInput" required>
+      <br>
+      <label>換算台幣：</label>
+      <span id="twdPreview">0</span> 元
+      <br><br>
 
       <label>訂單類型：</label>
       <select name="type" required>
         <option value="到貨">到貨</option>
         <option value="預購">預購</option>
-      </select><br><br>
+      </select><br>
 
       <label>是否已匯款：</label>
       <select name="paid" required>
         <option value="是">是</option>
         <option value="否">否</option>
-      </select><br><br>
+      </select><br>
 
       <input type="submit" value="送出訂單">
     </form>
 
-    <hr>
     <h2>查詢訂單</h2>
     <form id="searchForm">
       <label>姓名：</label>
       <select name="name" id="nameSelect" required>
         <option value="">-- 請選擇姓名 --</option>
+        <option value="__all__">📋 全部姓名</option>
       </select>
       <input type="submit" value="查詢">
     </form>
@@ -52,23 +77,21 @@
   </div>
 
   <script>
-    // 🔑 你的 Firebase 設定
+    // 🔑 Firebase 設定
     const firebaseConfig = {
       apiKey: "AIzaSyCPmkipseak3oKyfgPM-X8UkI9UKqv_cWA",
       authDomain: "chiikawa-6fccc.firebaseapp.com",
       projectId: "chiikawa-6fccc",
-      storageBucket: "chiikawa-6fccc.firebasestorage.app",
+      storageBucket: "chiikawa-6fccc.appspot.com",
       messagingSenderId: "579094648440",
       appId: "1:579094648440:web:fa4699346b41317ea6ff8d",
       measurementId: "G-SGQ9XMLLYM"
     };
 
-    // ⚙️ 初始化 Firebase
     const app = firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    // 🔒 設定密碼
-    const ADMIN_PASSWORD = "abc123";
+    const ADMIN_PASSWORD = "mySecret123";
 
     window.checkPassword = function() {
       const input = document.getElementById("passwordInput").value;
@@ -76,70 +99,137 @@
         document.getElementById("app").style.display = "block";
         document.getElementById("passwordInput").style.display = "none";
         document.querySelector("button").style.display = "none";
-        loadNames(); // 登入後載入姓名清單
+        loadOptions();
       } else {
         alert("密碼錯誤");
       }
     };
 
-    // 📝 新增訂單
-    document.getElementById("orderForm").addEventListener("submit", async function(e) {
-      e.preventDefault();
-      const formData = new FormData(this);
-      const order = {
-        name: formData.get("name"),
-        item: formData.get("item"),
-        amount: parseFloat(formData.get("amount")),
-        type: formData.get("type"),
-        paid: formData.get("paid"),
-        time: new Date().toISOString()
-      };
-
-      try {
-        await db.collection("orders").add(order);
-        alert("訂單已送出！");
-        this.reset();
-        loadNames(); // 新增後更新姓名清單
-      } catch (err) {
-        console.error("送出失敗:", err);
-        alert("送出失敗，請稍後再試。");
-      }
-    });
-
-    // 📋 載入姓名清單 (去重複)
-    async function loadNames() {
+    // 📋 載入姓名 & 品項
+    async function loadOptions() {
       let snapshot = await db.collection("orders").get();
       let names = new Set();
-      snapshot.forEach(doc => names.add(doc.data().name));
+      let items = new Set();
+      snapshot.forEach(doc => {
+        names.add(doc.data().name);
+        items.add(doc.data().item);
+      });
 
+      // 姓名（查詢）
       let nameSelect = document.getElementById("nameSelect");
-      nameSelect.innerHTML = `<option value="">-- 請選擇姓名 --</option>`;
+      nameSelect.innerHTML = `<option value="">-- 請選擇姓名 --</option><option value="__all__">📋 全部姓名</option>`;
       names.forEach(n => {
         let opt = document.createElement("option");
         opt.value = n;
         opt.textContent = n;
         nameSelect.appendChild(opt);
       });
+
+      // 姓名（新增）
+      let orderNameSelect = document.getElementById("orderNameSelect");
+      orderNameSelect.innerHTML = `<option value="">-- 請選擇姓名 --</option>`;
+      names.forEach(n => {
+        let opt = document.createElement("option");
+        opt.value = n;
+        opt.textContent = n;
+        orderNameSelect.appendChild(opt);
+      });
+      orderNameSelect.innerHTML += `<option value="__new__">➕ 新增姓名</option>`;
+
+      // 品項
+      let orderItemSelect = document.getElementById("orderItemSelect");
+      orderItemSelect.innerHTML = `<option value="">-- 請選擇品項 --</option>`;
+      items.forEach(i => {
+        let opt = document.createElement("option");
+        opt.value = i;
+        opt.textContent = i;
+        orderItemSelect.appendChild(opt);
+      });
+      orderItemSelect.innerHTML += `<option value="__new__">➕ 新增品項</option>`;
     }
+
+    // 📝 新增訂單
+    document.getElementById("orderForm").addEventListener("submit", async function(e) {
+      e.preventDefault();
+
+      let selectedName = document.getElementById("orderNameSelect").value;
+      if (selectedName === "__new__") {
+        selectedName = document.getElementById("newNameInput").value.trim();
+        if (!selectedName) return alert("請輸入新姓名！");
+      }
+
+      let selectedItem = document.getElementById("orderItemSelect").value;
+      if (selectedItem === "__new__") {
+        selectedItem = document.getElementById("newItemInput").value.trim();
+        if (!selectedItem) return alert("請輸入新品項！");
+      }
+
+      let yen = parseFloat(document.getElementById("yenInput").value);
+      if (isNaN(yen) || yen <= 0) return alert("請輸入正確的日幣金額！");
+      let amount = yen * 0.25; // 台幣
+
+      const order = {
+        name: selectedName,
+        item: selectedItem,
+        amount: amount,
+        type: document.querySelector("[name='type']").value,
+        paid: document.querySelector("[name='paid']").value,
+        time: new Date().toISOString()
+      };
+
+      try {
+        await db.collection("orders").add(order);
+        alert("訂單已送出！（金額已轉換成台幣）");
+        this.reset();
+        document.getElementById("twdPreview").innerText = "0";
+        document.getElementById("newNameInput").style.display = "none";
+        document.getElementById("newItemInput").style.display = "none";
+        loadOptions();
+      } catch (err) {
+        console.error("送出失敗:", err);
+        alert("送出失敗，請稍後再試。");
+      }
+    });
+
+    // 即時換算日幣 → 台幣
+    document.getElementById("yenInput").addEventListener("input", function() {
+      let yen = parseFloat(this.value);
+      document.getElementById("twdPreview").innerText = isNaN(yen) ? "0" : (yen * 0.25).toFixed(2);
+    });
+
+    // 切換輸入框
+    document.getElementById("orderNameSelect").addEventListener("change", function() {
+      document.getElementById("newNameInput").style.display = this.value === "__new__" ? "inline" : "none";
+    });
+    document.getElementById("orderItemSelect").addEventListener("change", function() {
+      document.getElementById("newItemInput").style.display = this.value === "__new__" ? "inline" : "none";
+    });
 
     // 🔍 查詢訂單
     document.getElementById("searchForm").addEventListener("submit", async function(e) {
       e.preventDefault();
       const name = new FormData(this).get("name");
-      let snapshot = await db.collection("orders").where("name", "==", name).get();
       let resultDiv = document.getElementById("result");
+      resultDiv.innerHTML = "";
+
+      let snapshot;
+      if (name === "__all__") {
+        snapshot = await db.collection("orders").orderBy("time", "desc").get();
+      } else {
+        snapshot = await db.collection("orders").where("name", "==", name).get();
+      }
 
       if (!snapshot.empty) {
-        let output = `<h3>${name} 的訂單紀錄：</h3>`;
         snapshot.forEach(doc => {
           const o = doc.data();
-          output += `
-            品項：${o.item}, 金額：${o.amount}, 類型：${o.type}, 匯款：${o.paid}, 時間：${o.time}<br>
+          resultDiv.innerHTML += `
+            <div class="order-item">
+              <strong>${o.name}</strong> | 品項：${o.item}, 金額：${o.amount} TWD, 類型：${o.type}, 匯款：${o.paid}, 時間：${o.time}
+            </div>
           `;
         });
-        resultDiv.innerHTML = output;
       } else {
-        resultDiv.innerHTML = `<p>找不到 ${name} 的訂單紀錄</p>`;
+        resultDiv.innerHTML = `<p>沒有找到訂單紀錄</p>`;
       }
     });
   </script>
