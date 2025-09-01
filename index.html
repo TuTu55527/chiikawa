@@ -18,6 +18,8 @@
     .order-info { max-width: 80%; }
     .unpaid { color: red; font-weight: bold; }
     .stats { background: #fff; padding: 10px; margin-top: 15px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+    .export-btn { margin-top: 10px; background: #28a745; }
+    .export-btn:hover { background: #1e7e34; }
   </style>
 </head>
 <body>
@@ -28,6 +30,7 @@
   <div id="app" style="display:none;">
     <h2>新增訂單</h2>
     <form id="orderForm">
+      <!-- 姓名 -->
       <label>姓名：</label>
       <select id="orderNameSelect" name="name" required>
         <option value="">-- 請選擇姓名 --</option>
@@ -36,6 +39,7 @@
       <input type="text" id="newNameInput" placeholder="輸入新姓名" style="display:none;">
       <br>
 
+      <!-- 品項 -->
       <label>品項：</label>
       <select id="orderItemSelect" name="item" required>
         <option value="">-- 請選擇品項 --</option>
@@ -44,18 +48,30 @@
       <input type="text" id="newItemInput" placeholder="輸入新品項" style="display:none;">
       <br>
 
+      <!-- 描述 -->
+      <label>描述：</label>
+      <select id="orderDescSelect" name="desc">
+        <option value="">-- 請選擇描述 --</option>
+        <option value="__new__">➕ 新增描述</option>
+      </select>
+      <input type="text" id="newDescInput" placeholder="輸入新描述" style="display:none;">
+      <br>
+
+      <!-- 金額 -->
       <label>金額（日幣）：</label>
       <input type="number" id="yenInput" required><br>
       <label>換算台幣：</label>
       <span id="twdPreview">0</span> 元
       <br><br>
 
+      <!-- 類型 -->
       <label>訂單類型：</label>
       <select name="type" required>
         <option value="到貨">到貨</option>
         <option value="預購">預購</option>
       </select><br>
 
+      <!-- 匯款 -->
       <label>是否已匯款：</label>
       <select name="paid" required>
         <option value="是">是</option>
@@ -93,6 +109,7 @@
     const db = firebase.firestore();
 
     const ADMIN_PASSWORD = "abc123";
+    let lastResults = [];
 
     window.checkPassword = function() {
       const input = document.getElementById("passwordInput").value;
@@ -106,47 +123,41 @@
       }
     };
 
-    // 📋 載入姓名 & 品項
+    // 📋 載入姓名 / 品項 / 描述
     async function loadOptions() {
       let snapshot = await db.collection("orders").get();
       let names = new Set();
       let items = new Set();
+      let descs = new Set();
       snapshot.forEach(doc => {
-        names.add(doc.data().name);
-        items.add(doc.data().item);
+        const d = doc.data();
+        if (d.name) names.add(d.name);
+        if (d.item) items.add(d.item);
+        if (d.desc) descs.add(d.desc);
       });
 
-      // 姓名（查詢）
-      let nameSelect = document.getElementById("nameSelect");
-      nameSelect.innerHTML = `<option value="">-- 請選擇姓名 --</option><option value="__all__">📋 全部姓名</option>`;
-      names.forEach(n => {
-        let opt = document.createElement("option");
-        opt.value = n;
-        opt.textContent = n;
-        nameSelect.appendChild(opt);
-      });
-
-      // 姓名（新增）
+      // 姓名選單
       let orderNameSelect = document.getElementById("orderNameSelect");
       orderNameSelect.innerHTML = `<option value="">-- 請選擇姓名 --</option>`;
-      names.forEach(n => {
-        let opt = document.createElement("option");
-        opt.value = n;
-        opt.textContent = n;
-        orderNameSelect.appendChild(opt);
-      });
+      names.forEach(n => orderNameSelect.innerHTML += `<option value="${n}">${n}</option>`);
       orderNameSelect.innerHTML += `<option value="__new__">➕ 新增姓名</option>`;
 
-      // 品項
+      // 品項選單
       let orderItemSelect = document.getElementById("orderItemSelect");
       orderItemSelect.innerHTML = `<option value="">-- 請選擇品項 --</option>`;
-      items.forEach(i => {
-        let opt = document.createElement("option");
-        opt.value = i;
-        opt.textContent = i;
-        orderItemSelect.appendChild(opt);
-      });
+      items.forEach(i => orderItemSelect.innerHTML += `<option value="${i}">${i}</option>`);
       orderItemSelect.innerHTML += `<option value="__new__">➕ 新增品項</option>`;
+
+      // 描述選單
+      let orderDescSelect = document.getElementById("orderDescSelect");
+      orderDescSelect.innerHTML = `<option value="">-- 請選擇描述 --</option>`;
+      descs.forEach(d => orderDescSelect.innerHTML += `<option value="${d}">${d}</option>`);
+      orderDescSelect.innerHTML += `<option value="__new__">➕ 新增描述</option>`;
+
+      // 查詢用姓名選單
+      let nameSelect = document.getElementById("nameSelect");
+      nameSelect.innerHTML = `<option value="">-- 請選擇姓名 --</option><option value="__all__">📋 全部姓名</option>`;
+      names.forEach(n => nameSelect.innerHTML += `<option value="${n}">${n}</option>`);
     }
 
     // 📝 新增訂單
@@ -165,13 +176,20 @@
         if (!selectedItem) return alert("請輸入新品項！");
       }
 
+      let selectedDesc = document.getElementById("orderDescSelect").value;
+      if (selectedDesc === "__new__") {
+        selectedDesc = document.getElementById("newDescInput").value.trim();
+        if (!selectedDesc) return alert("請輸入新描述！");
+      }
+
       let yen = parseFloat(document.getElementById("yenInput").value);
       if (isNaN(yen) || yen <= 0) return alert("請輸入正確的日幣金額！");
-      let amount = yen * 0.25; // 台幣
+      let amount = yen * 0.25;
 
       const order = {
         name: selectedName,
         item: selectedItem,
+        desc: selectedDesc || "",
         amount: amount,
         type: document.querySelector("[name='type']").value,
         paid: document.querySelector("[name='paid']").value,
@@ -183,8 +201,7 @@
         alert("訂單已送出！（金額已轉換成台幣）");
         this.reset();
         document.getElementById("twdPreview").innerText = "0";
-        document.getElementById("newNameInput").style.display = "none";
-        document.getElementById("newItemInput").style.display = "none";
+        ["newNameInput","newItemInput","newDescInput"].forEach(id => document.getElementById(id).style.display="none");
         loadOptions();
       } catch (err) {
         console.error("送出失敗:", err);
@@ -192,18 +209,21 @@
       }
     });
 
-    // 即時換算日幣 → 台幣
+    // 即時換算
     document.getElementById("yenInput").addEventListener("input", function() {
       let yen = parseFloat(this.value);
       document.getElementById("twdPreview").innerText = isNaN(yen) ? "0" : (yen * 0.25).toFixed(2);
     });
 
-    // 切換輸入框
+    // 切換「新增輸入框」
     document.getElementById("orderNameSelect").addEventListener("change", function() {
       document.getElementById("newNameInput").style.display = this.value === "__new__" ? "inline" : "none";
     });
     document.getElementById("orderItemSelect").addEventListener("change", function() {
       document.getElementById("newItemInput").style.display = this.value === "__new__" ? "inline" : "none";
+    });
+    document.getElementById("orderDescSelect").addEventListener("change", function() {
+      document.getElementById("newDescInput").style.display = this.value === "__new__" ? "inline" : "none";
     });
 
     // 🔍 查詢訂單
@@ -212,6 +232,7 @@
       const name = new FormData(this).get("name");
       let resultDiv = document.getElementById("result");
       resultDiv.innerHTML = "";
+      lastResults = [];
 
       let snapshot;
       if (name === "__all__") {
@@ -221,27 +242,27 @@
       }
 
       if (!snapshot.empty) {
-        let total = 0;
-        let unpaidTotal = 0;
+        let total = 0, unpaidTotal = 0;
         snapshot.forEach(doc => {
           const o = doc.data();
+          lastResults.push({ id: doc.id, ...o });
           total += o.amount;
           if (o.paid === "否") unpaidTotal += o.amount;
 
           resultDiv.innerHTML += `
             <div class="order-card">
               <div class="order-info ${o.paid === "否" ? "unpaid" : ""}">
-                <strong>${o.name}</strong> | 品項：${o.item}, 金額：${o.amount} TWD, 類型：${o.type}, 匯款：${o.paid}, 時間：${o.time}
+                <strong>${o.name}</strong> | 品項：${o.item}, 金額：${o.amount} TWD, 類型：${o.type}, 匯款：${o.paid}, 描述：${o.desc || "-"}, 時間：${o.time}
               </div>
               <button onclick="deleteOrder('${doc.id}')">刪除</button>
             </div>
           `;
         });
-
         resultDiv.innerHTML += `
           <div class="stats">
             <p><strong>總計：</strong> ${total.toFixed(2)} TWD</p>
             <p><strong>未匯款總計：</strong> <span class="unpaid">${unpaidTotal.toFixed(2)} TWD</span></p>
+            <button class="export-btn" onclick="exportCSV()">📤 匯出 CSV</button>
           </div>
         `;
       } else {
@@ -249,13 +270,31 @@
       }
     });
 
-    // ❌ 刪除訂單
+    // ❌ 刪除
     async function deleteOrder(id) {
       if (confirm("確定要刪除此訂單嗎？")) {
         await db.collection("orders").doc(id).delete();
         alert("訂單已刪除");
-        document.getElementById("searchForm").dispatchEvent(new Event("submit")); // 重新查詢
+        document.getElementById("searchForm").dispatchEvent(new Event("submit"));
       }
+    }
+
+    // 📤 匯出 CSV
+    function exportCSV() {
+      if (lastResults.length === 0) {
+        alert("沒有資料可匯出！");
+        return;
+      }
+      let csv = "姓名,品項,描述,金額(日幣),金額(台幣),類型,匯款,時間\n";
+      lastResults.forEach(o => {
+        let yen = (o.amount / 0.25).toFixed(0);
+        csv += `${o.name},${o.item},${o.desc || ""},${yen},${o.amount},${o.type},${o.paid},${o.time}\n`;
+      });
+      let blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      let link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = "orders.csv";
+      link.click();
     }
   </script>
 </body>
