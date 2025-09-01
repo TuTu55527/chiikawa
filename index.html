@@ -11,11 +11,13 @@
     form { background: #fff; padding: 15px; margin: 15px 0; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
     label { display: inline-block; width: 120px; font-weight: bold; margin-bottom: 5px; }
     input, select { padding: 6px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; width: calc(100% - 130px); }
-    input[type="submit"], button { width: auto; background: #007bff; color: white; border: none; cursor: pointer; padding: 8px 16px; border-radius: 4px; margin-top: 10px; }
+    input[type="submit"], button { width: auto; background: #007bff; color: white; border: none; cursor: pointer; padding: 6px 12px; border-radius: 4px; margin-top: 5px; }
     input[type="submit"]:hover, button:hover { background: #0056b3; }
-    #result { background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-top: 15px; }
-    .order-item { border-bottom: 1px solid #eee; padding: 5px 0; }
-    small { color: #555; }
+    #result { margin-top: 15px; }
+    .order-card { background: #fff; border-radius: 8px; padding: 10px; margin: 10px 0; box-shadow: 0 1px 4px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; }
+    .order-info { max-width: 80%; }
+    .unpaid { color: red; font-weight: bold; }
+    .stats { background: #fff; padding: 10px; margin-top: 15px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
   </style>
 </head>
 <body>
@@ -43,8 +45,7 @@
       <br>
 
       <label>金額（日幣）：</label>
-      <input type="number" id="yenInput" required>
-      <br>
+      <input type="number" id="yenInput" required><br>
       <label>換算台幣：</label>
       <span id="twdPreview">0</span> 元
       <br><br>
@@ -91,7 +92,7 @@
     const app = firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    const ADMIN_PASSWORD = "mySecret123";
+    const ADMIN_PASSWORD = "abc123";
 
     window.checkPassword = function() {
       const input = document.getElementById("passwordInput").value;
@@ -220,18 +221,42 @@
       }
 
       if (!snapshot.empty) {
+        let total = 0;
+        let unpaidTotal = 0;
         snapshot.forEach(doc => {
           const o = doc.data();
+          total += o.amount;
+          if (o.paid === "否") unpaidTotal += o.amount;
+
           resultDiv.innerHTML += `
-            <div class="order-item">
-              <strong>${o.name}</strong> | 品項：${o.item}, 金額：${o.amount} TWD, 類型：${o.type}, 匯款：${o.paid}, 時間：${o.time}
+            <div class="order-card">
+              <div class="order-info ${o.paid === "否" ? "unpaid" : ""}">
+                <strong>${o.name}</strong> | 品項：${o.item}, 金額：${o.amount} TWD, 類型：${o.type}, 匯款：${o.paid}, 時間：${o.time}
+              </div>
+              <button onclick="deleteOrder('${doc.id}')">刪除</button>
             </div>
           `;
         });
+
+        resultDiv.innerHTML += `
+          <div class="stats">
+            <p><strong>總計：</strong> ${total.toFixed(2)} TWD</p>
+            <p><strong>未匯款總計：</strong> <span class="unpaid">${unpaidTotal.toFixed(2)} TWD</span></p>
+          </div>
+        `;
       } else {
         resultDiv.innerHTML = `<p>沒有找到訂單紀錄</p>`;
       }
     });
+
+    // ❌ 刪除訂單
+    async function deleteOrder(id) {
+      if (confirm("確定要刪除此訂單嗎？")) {
+        await db.collection("orders").doc(id).delete();
+        alert("訂單已刪除");
+        document.getElementById("searchForm").dispatchEvent(new Event("submit")); // 重新查詢
+      }
+    }
   </script>
 </body>
 </html>
