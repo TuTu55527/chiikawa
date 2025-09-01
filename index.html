@@ -16,7 +16,7 @@
     input[type="submit"]:hover, button:hover { background: #0056b3; }
     #result { margin-top: 15px; }
     .order-card { background: #fff; border-radius: 8px; padding: 10px; margin: 10px 0; box-shadow: 0 1px 4px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; }
-    .order-info { max-width: 80%; }
+    .order-info { max-width: 75%; }
     .unpaid { color: red; font-weight: bold; }
     .stats { background: #fff; padding: 10px; margin-top: 15px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
     .export-btn { margin-top: 10px; background: #28a745; }
@@ -29,7 +29,7 @@
   <button onclick="checkPassword()">登入</button>
 
   <div id="app" style="display:none;">
-    <h2>新增訂單</h2>
+    <h2 id="formTitle">新增訂單</h2>
     <form id="orderForm">
       <!-- 姓名 -->
       <label>姓名：</label>
@@ -109,9 +109,9 @@
     const app = firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    // 🔒 密碼改成 abc123
     const ADMIN_PASSWORD = "abc123";
     let lastResults = [];
+    let editingId = null; // 判斷是否為修改模式
 
     window.checkPassword = function() {
       const input = document.getElementById("passwordInput").value;
@@ -156,7 +156,7 @@
       names.forEach(n => nameSelect.innerHTML += `<option value="${n}">${n}</option>`);
     }
 
-    // 📝 新增訂單
+    // 📝 新增 / 修改 訂單
     document.getElementById("orderForm").addEventListener("submit", async function(e) {
       e.preventDefault();
 
@@ -193,15 +193,24 @@
       };
 
       try {
-        await db.collection("orders").add(order);
-        alert("訂單已送出！（金額已轉換成台幣）");
+        if (editingId) {
+          await db.collection("orders").doc(editingId).update(order);
+          alert("訂單已更新！");
+          editingId = null;
+          document.querySelector("#orderForm input[type='submit']").value = "送出訂單";
+          document.getElementById("formTitle").innerText = "新增訂單";
+        } else {
+          await db.collection("orders").add(order);
+          alert("訂單已送出！");
+        }
         this.reset();
         document.getElementById("twdPreview").innerText = "0";
         ["newNameInput","newItemInput","newDescInput"].forEach(id => document.getElementById(id).style.display="none");
         loadOptions();
+        document.getElementById("searchForm").dispatchEvent(new Event("submit"));
       } catch (err) {
-        console.error("送出失敗:", err);
-        alert("送出失敗，請稍後再試。");
+        console.error("失敗:", err);
+        alert("操作失敗，請稍後再試。");
       }
     });
 
@@ -212,14 +221,11 @@
     });
 
     // 切換新增輸入框
-    document.getElementById("orderNameSelect").addEventListener("change", function() {
-      document.getElementById("newNameInput").style.display = this.value === "__new__" ? "inline" : "none";
-    });
-    document.getElementById("orderItemSelect").addEventListener("change", function() {
-      document.getElementById("newItemInput").style.display = this.value === "__new__" ? "inline" : "none";
-    });
-    document.getElementById("orderDescSelect").addEventListener("change", function() {
-      document.getElementById("newDescInput").style.display = this.value === "__new__" ? "inline" : "none";
+    ["orderNameSelect","orderItemSelect","orderDescSelect"].forEach(id => {
+      document.getElementById(id).addEventListener("change", function() {
+        let inputId = id.replace("Select","Input");
+        document.getElementById(inputId).style.display = this.value === "__new__" ? "inline" : "none";
+      });
     });
 
     // 🔍 查詢
@@ -250,7 +256,10 @@
               <div class="order-info ${o.paid === "否" ? "unpaid" : ""}">
                 <strong>${o.name}</strong> | 品項：${o.item}, 金額：${o.amount} TWD, 類型：${o.type}, 匯款：${o.paid}, 描述：${o.desc || "-"}, 時間：${o.time}
               </div>
-              <button onclick="deleteOrder('${doc.id}')">刪除</button>
+              <div>
+                <button onclick="editOrder('${doc.id}')">修改</button>
+                <button onclick="deleteOrder('${doc.id}')">刪除</button>
+              </div>
             </div>
           `;
         });
@@ -265,6 +274,25 @@
         resultDiv.innerHTML = `<p>沒有找到訂單紀錄</p>`;
       }
     });
+
+    // ✏️ 修改
+    async function editOrder(id) {
+      let docSnap = await db.collection("orders").doc(id).get();
+      if (!docSnap.exists) return alert("找不到資料！");
+      let o = docSnap.data();
+
+      document.getElementById("orderNameSelect").value = o.name;
+      document.getElementById("orderItemSelect").value = o.item;
+      document.getElementById("orderDescSelect").value = o.desc || "";
+      document.getElementById("yenInput").value = (o.amount / 0.25).toFixed(0);
+      document.getElementById("twdPreview").innerText = o.amount;
+      document.querySelector("[name='type']").value = o.type;
+      document.querySelector("[name='paid']").value = o.paid;
+
+      editingId = id;
+      document.querySelector("#orderForm input[type='submit']").value = "更新訂單";
+      document.getElementById("formTitle").innerText = "修改訂單";
+    }
 
     // ❌ 刪除
     async function deleteOrder(id) {
