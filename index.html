@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>訂單管理</title>
+  <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"></script>
 </head>
@@ -42,47 +43,53 @@
     <h2>查詢訂單</h2>
     <form id="searchForm">
       <label>姓名：</label>
-      <input type="text" name="name" required>
+      <select name="name" id="nameSelect" required>
+        <option value="">-- 請選擇姓名 --</option>
+      </select>
       <input type="submit" value="查詢">
     </form>
     <div id="result"></div>
   </div>
 
   <script>
-    // 1️⃣ Firebase 設定 (換成你專案的資料)
+    // 🔑 你的 Firebase 設定
     const firebaseConfig = {
-      apiKey: "你的API_KEY",
-      authDomain: "你的專案ID.firebaseapp.com",
-      projectId: "你的專案ID",
-      storageBucket: "你的專案ID.appspot.com",
-      messagingSenderId: "你的SenderId",
-      appId: "你的AppId"
+      apiKey: "AIzaSyCPmkipseak3oKyfgPM-X8UkI9UKqv_cWA",
+      authDomain: "chiikawa-6fccc.firebaseapp.com",
+      projectId: "chiikawa-6fccc",
+      storageBucket: "chiikawa-6fccc.firebasestorage.app",
+      messagingSenderId: "579094648440",
+      appId: "1:579094648440:web:fa4699346b41317ea6ff8d",
+      measurementId: "G-SGQ9XMLLYM"
     };
+
+    // ⚙️ 初始化 Firebase
     const app = firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    // 2️⃣ 設定密碼（你自己定一組）
+    // 🔒 設定密碼
     const ADMIN_PASSWORD = "mySecret123";
 
-    function checkPassword() {
+    window.checkPassword = function() {
       const input = document.getElementById("passwordInput").value;
       if (input === ADMIN_PASSWORD) {
         document.getElementById("app").style.display = "block";
         document.getElementById("passwordInput").style.display = "none";
         event.target.style.display = "none";
+        loadNames(); // 進入後馬上載入姓名清單
       } else {
         alert("密碼錯誤");
       }
-    }
+    };
 
-    // 3️⃣ 新增訂單
+    // 📝 新增訂單
     document.getElementById("orderForm").addEventListener("submit", async function(e) {
       e.preventDefault();
       const formData = new FormData(this);
       const order = {
         name: formData.get("name"),
         item: formData.get("item"),
-        amount: formData.get("amount"),
+        amount: parseFloat(formData.get("amount")),
         type: formData.get("type"),
         paid: formData.get("paid"),
         time: new Date().toISOString()
@@ -92,13 +99,30 @@
         await db.collection("orders").add(order);
         alert("訂單已送出！");
         this.reset();
+        loadNames(); // 新增後更新姓名清單
       } catch (err) {
         console.error("送出失敗:", err);
         alert("送出失敗，請稍後再試。");
       }
     });
 
-    // 4️⃣ 查詢訂單
+    // 📋 載入姓名清單 (去重複)
+    async function loadNames() {
+      let snapshot = await db.collection("orders").get();
+      let names = new Set();
+      snapshot.forEach(doc => names.add(doc.data().name));
+
+      let nameSelect = document.getElementById("nameSelect");
+      nameSelect.innerHTML = `<option value="">-- 請選擇姓名 --</option>`;
+      names.forEach(n => {
+        let opt = document.createElement("option");
+        opt.value = n;
+        opt.textContent = n;
+        nameSelect.appendChild(opt);
+      });
+    }
+
+    // 🔍 查詢訂單
     document.getElementById("searchForm").addEventListener("submit", async function(e) {
       e.preventDefault();
       const name = new FormData(this).get("name");
