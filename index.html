@@ -5,6 +5,7 @@
   <title>訂單管理</title>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
     body { font-family: "Microsoft JhengHei", sans-serif; background: #f8f9fa; padding: 20px; }
     h2 { color: #007bff; border-bottom: 2px solid #007bff; padding-bottom: 5px; }
@@ -108,6 +109,7 @@
     const app = firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
+    // 🔒 密碼改成 abc123
     const ADMIN_PASSWORD = "abc123";
     let lastResults = [];
 
@@ -123,12 +125,10 @@
       }
     };
 
-    // 📋 載入姓名 / 品項 / 描述
+    // 📋 載入下拉選項
     async function loadOptions() {
       let snapshot = await db.collection("orders").get();
-      let names = new Set();
-      let items = new Set();
-      let descs = new Set();
+      let names = new Set(), items = new Set(), descs = new Set();
       snapshot.forEach(doc => {
         const d = doc.data();
         if (d.name) names.add(d.name);
@@ -136,25 +136,21 @@
         if (d.desc) descs.add(d.desc);
       });
 
-      // 姓名選單
       let orderNameSelect = document.getElementById("orderNameSelect");
       orderNameSelect.innerHTML = `<option value="">-- 請選擇姓名 --</option>`;
       names.forEach(n => orderNameSelect.innerHTML += `<option value="${n}">${n}</option>`);
       orderNameSelect.innerHTML += `<option value="__new__">➕ 新增姓名</option>`;
 
-      // 品項選單
       let orderItemSelect = document.getElementById("orderItemSelect");
       orderItemSelect.innerHTML = `<option value="">-- 請選擇品項 --</option>`;
       items.forEach(i => orderItemSelect.innerHTML += `<option value="${i}">${i}</option>`);
       orderItemSelect.innerHTML += `<option value="__new__">➕ 新增品項</option>`;
 
-      // 描述選單
       let orderDescSelect = document.getElementById("orderDescSelect");
       orderDescSelect.innerHTML = `<option value="">-- 請選擇描述 --</option>`;
       descs.forEach(d => orderDescSelect.innerHTML += `<option value="${d}">${d}</option>`);
       orderDescSelect.innerHTML += `<option value="__new__">➕ 新增描述</option>`;
 
-      // 查詢用姓名選單
       let nameSelect = document.getElementById("nameSelect");
       nameSelect.innerHTML = `<option value="">-- 請選擇姓名 --</option><option value="__all__">📋 全部姓名</option>`;
       names.forEach(n => nameSelect.innerHTML += `<option value="${n}">${n}</option>`);
@@ -215,7 +211,7 @@
       document.getElementById("twdPreview").innerText = isNaN(yen) ? "0" : (yen * 0.25).toFixed(2);
     });
 
-    // 切換「新增輸入框」
+    // 切換新增輸入框
     document.getElementById("orderNameSelect").addEventListener("change", function() {
       document.getElementById("newNameInput").style.display = this.value === "__new__" ? "inline" : "none";
     });
@@ -226,7 +222,7 @@
       document.getElementById("newDescInput").style.display = this.value === "__new__" ? "inline" : "none";
     });
 
-    // 🔍 查詢訂單
+    // 🔍 查詢
     document.getElementById("searchForm").addEventListener("submit", async function(e) {
       e.preventDefault();
       const name = new FormData(this).get("name");
@@ -262,7 +258,7 @@
           <div class="stats">
             <p><strong>總計：</strong> ${total.toFixed(2)} TWD</p>
             <p><strong>未匯款總計：</strong> <span class="unpaid">${unpaidTotal.toFixed(2)} TWD</span></p>
-            <button class="export-btn" onclick="exportCSV()">📤 匯出 CSV</button>
+            <button class="export-btn" onclick="exportExcel()">📤 匯出 Excel</button>
           </div>
         `;
       } else {
@@ -279,27 +275,24 @@
       }
     }
 
-    // 📤 匯出 CSV
-function exportCSV() {
-  if (lastResults.length === 0) {
-    alert("沒有資料可匯出！");
-    return;
-  }
-  let csv = "姓名,品項,描述,金額(日幣),金額(台幣),類型,匯款,時間\n";
-  lastResults.forEach(o => {
-    let yen = (o.amount / 0.25).toFixed(0);
-    csv += `${o.name},${o.item},${o.desc || ""},${yen},${o.amount},${o.type},${o.paid},${o.time}\n`;
-  });
+    // 📤 匯出 Excel
+    function exportExcel() {
+      if (lastResults.length === 0) {
+        alert("沒有資料可匯出！");
+        return;
+      }
 
-  // 加 BOM，避免 Excel 亂碼
-  let bom = "\uFEFF";
-  let blob = new Blob([bom + csv], { type: "text/csv;charset=utf-8;" });
-  let link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = "orders.csv";
-  link.click();
-}
+      let data = [["姓名","品項","描述","金額(日幣)","金額(台幣)","類型","匯款","時間"]];
+      lastResults.forEach(o => {
+        let yen = (o.amount / 0.25).toFixed(0);
+        data.push([o.name, o.item, o.desc || "", yen, o.amount, o.type, o.paid, o.time]);
+      });
 
+      let worksheet = XLSX.utils.aoa_to_sheet(data);
+      let workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Orders");
+      XLSX.writeFile(workbook, "orders.xlsx");
+    }
   </script>
 </body>
 </html>
